@@ -1,0 +1,217 @@
+local TweenService = game:GetService(""TweenService"")
+local Players = game:GetService(""Players"")
+local Debris = game:GetService(""Debris"")
+local RunService = game:GetService(""RunService"")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild(""PlayerGui"", 10)
+
+local CONFIG = {{
+    DURATION = 4,
+    ICON = ""rbxassetid://133555354035357"",
+    PARTICLE = ""rbxassetid://6073763717"",
+    COLORS = {{
+        SUCCESS = Color3.fromRGB(0, 255, 150),
+        RECONNECT = Color3.fromRGB(0, 180, 255),
+        ALREADY = Color3.fromRGB(255, 70, 70)
+    }},
+    SOUNDS = {{
+        SUCCESS = ""rbxassetid://16888522738"",
+        ALREADY = ""rbxassetid://16888522657"",
+        RECONNECTING = ""rbxassetid://16888522973"",
+        ERROR = ""rbxassetid://16888522364""
+    }}
+}}
+
+local CURRENT_PID = {processId}
+local LAST_PID = _G.World_LastClientPID
+
+local function playNotificationSound(id)
+    local s = Instance.new(""Sound"")
+    s.SoundId = id
+    s.Volume = 0.5
+    s.Parent = game:GetService(""SoundService"")
+    s:Play()
+    Debris:AddItem(s, 3)
+end
+
+local function createParticles(frame, color)
+    for i = 1, 35 do
+        task.spawn(function()
+            local p = Instance.new(""ImageLabel"")
+            p.BackgroundTransparency = 1
+            p.Image = CONFIG.PARTICLE
+            p.ImageColor3 = color
+            p.Size = UDim2.fromOffset(math.random(8, 20), math.random(8, 20))
+            p.Position = UDim2.fromScale(0.5, 0.5)
+            p.AnchorPoint = Vector2.new(0.5, 0.5)
+            p.ZIndex = 200
+            p.Parent = frame
+
+            local angle = math.rad(math.random(0, 360))
+            local speed = math.random(4, 12)
+            local vel = Vector2.new(math.cos(angle) * speed, math.sin(angle) * speed)
+            local rot = math.random(-8, 8)
+            
+            local t = 0
+            while t < 1 do
+                t = t + 0.03
+                p.Position = p.Position + UDim2.fromOffset(vel.X, vel.Y)
+                p.Rotation = p.Rotation + rot
+                p.ImageTransparency = t
+                vel = vel * 0.96
+                RunService.RenderStepped:Wait()
+            end
+            p:Destroy()
+        end)
+    end
+end
+
+local function show()
+    local existing = PlayerGui:FindFirstChild(""WorldNotifier"")
+    if existing then existing:Destroy() end
+
+    local sg = Instance.new(""ScreenGui"")
+    sg.Name = ""WorldNotifier""
+    sg.DisplayOrder = 999
+    sg.IgnoreGuiInset = true
+    sg.Parent = PlayerGui
+
+    local main = Instance.new(""CanvasGroup"")
+    main.Size = UDim2.new(0, 420, 0, 85)
+    main.Position = UDim2.new(0.5, 0, 0, -150)
+    main.AnchorPoint = Vector2.new(0.5, 0)
+    main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    main.BackgroundTransparency = 0.2
+    main.BorderSizePixel = 0
+    main.Parent = sg
+
+    local corner = Instance.new(""UICorner"")
+    corner.CornerRadius = UDim.new(0, 18)
+    corner.Parent = main
+
+    local stroke = Instance.new(""UIStroke"")
+    stroke.Thickness = 3.5
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = main
+
+    local strokeGradient = Instance.new(""UIGradient"")
+    strokeGradient.Parent = stroke
+
+    local icon = Instance.new(""ImageLabel"")
+    icon.Size = UDim2.new(0, 50, 0, 50)
+    icon.Position = UDim2.new(0, 20, 0.5, 0)
+    icon.AnchorPoint = Vector2.new(0, 0.5)
+    icon.BackgroundTransparency = 1
+    icon.Image = CONFIG.ICON
+    icon.Parent = main
+
+    local title = Instance.new(""TextLabel"")
+    title.Size = UDim2.new(1, -100, 0, 30)
+    title.Position = UDim2.new(0, 85, 0, 18)
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.Michroma
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.TextSize = 18
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = main
+
+    local desc = Instance.new(""TextLabel"")
+    desc.Size = UDim2.new(1, -100, 0, 20)
+    desc.Position = UDim2.new(0, 85, 0, 44)
+    desc.BackgroundTransparency = 1
+    desc.Font = Enum.Font.GothamMedium
+    desc.TextSize = 14
+    desc.TextXAlignment = Enum.TextXAlignment.Left
+    desc.Parent = main
+
+    local theme = CONFIG.COLORS.SUCCESS
+    local sound = CONFIG.SOUNDS.SUCCESS
+
+    local pidSuffix = "" [PID: "" .. tostring(CURRENT_PID) .. ""]""
+
+    if LAST_PID == CURRENT_PID then
+        title.Text = ""DUPLICATE ATTEMPT""
+        desc.Text = ""Already injected from a World process."" .. pidSuffix
+        theme = CONFIG.COLORS.ALREADY
+        sound = CONFIG.SOUNDS.ALREADY
+    elseif LAST_PID ~= nil then
+        title.Text = ""SESSION RESTORE""
+        desc.Text = ""Re-connecting to Roblox instance."" .. pidSuffix
+        theme = CONFIG.COLORS.RECONNECT
+        sound = CONFIG.SOUNDS.RECONNECTING
+    else
+        title.Text = ""WORLD INITIALIZED""
+        desc.Text = ""Establishing secure environment..."" .. pidSuffix
+        theme = CONFIG.COLORS.SUCCESS
+        sound = CONFIG.SOUNDS.SUCCESS
+    end
+
+    strokeGradient.Color = ColorSequence.new({{
+        ColorSequenceKeypoint.new(0, theme),
+        ColorSequenceKeypoint.new(0.4, theme),
+        ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
+        ColorSequenceKeypoint.new(0.6, theme),
+        ColorSequenceKeypoint.new(1, theme)
+    }})
+    desc.TextColor3 = theme
+
+    local barContainer = Instance.new(""Frame"")
+    barContainer.Size = UDim2.new(1, -36, 0, 3)
+    barContainer.Position = UDim2.new(0, 18, 1, -10)
+    barContainer.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    barContainer.BorderSizePixel = 0
+    barContainer.Parent = main
+
+    local barCorner = Instance.new(""UICorner"")
+    barCorner.CornerRadius = UDim.new(1, 0)
+    barCorner.Parent = barContainer
+
+    local bar = Instance.new(""Frame"")
+    bar.Size = UDim2.new(1, 0, 1, 0)
+    bar.BackgroundColor3 = theme
+    bar.BorderSizePixel = 0
+    bar.Parent = barContainer
+
+    local innerCorner = Instance.new(""UICorner"")
+    innerCorner.CornerRadius = UDim.new(1, 0)
+    innerCorner.Parent = bar
+
+    task.spawn(function()
+        local rot = 0
+        local connection
+        connection = RunService.RenderStepped:Connect(function(dt)
+            if not strokeGradient or not strokeGradient.Parent then connection:Disconnect() return end
+            rot = (rot + dt * 250) % 360
+            strokeGradient.Rotation = rot
+        end)
+    end)
+
+    TweenService:Create(main, TweenInfo.new(0.9, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {{
+        Position = UDim2.new(0.5, 0, 0, 50)
+    }}):Play()
+    
+    playNotificationSound(sound)
+
+    task.delay(0.2, function()
+        createParticles(main, theme)
+    end)
+
+    TweenService:Create(bar, TweenInfo.new(CONFIG.DURATION, Enum.EasingStyle.Linear), {{Size = UDim2.new(0, 0, 1, 0)}}):Play()
+
+    task.delay(CONFIG.DURATION, function()
+        TweenService:Create(main, TweenInfo.new(0.7, Enum.EasingStyle.Exponential, Enum.EasingDirection.In), {{
+            Position = UDim2.new(0.5, 0, 0, -150),
+            GroupTransparency = 1
+        }}):Play()
+        Debris:AddItem(sg, 0.8)
+    end)
+
+    _G.World_LastClientPID = CURRENT_PID
+end
+
+local success, err = pcall(show)
+if not success then
+    playNotificationSound(CONFIG.SOUNDS.ERROR)
+    warn(""World Notifier Error: "" .. tostring(err))
+end
